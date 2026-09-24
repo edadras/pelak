@@ -1,0 +1,15 @@
+__pycache__
+*.pyc
+*.pyo
+.git
+.idea
+.vscode
+*.md
+!lite/README.md
+venv
+.env
+*.log
+lite/data/*
+!lite/data/.gitkeep
+lite/output/*
+!lite/output/.gitkeep

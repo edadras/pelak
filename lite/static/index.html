@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PLPR Lite</title>
+  <style>
+    body { font-family: Tahoma, sans-serif; margin: 24px; background: #f5f7fb; color: #1f2937; }
+    h1 { margin-bottom: 8px; }
+    .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+    button { background: #2563eb; color: #fff; border: 0; padding: 10px 16px; border-radius: 8px; cursor: pointer; }
+    button:disabled { background: #94a3b8; cursor: not-allowed; }
+    button.secondary { background: #64748b; }
+    input, select { padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border-bottom: 1px solid #e2e8f0; padding: 8px; text-align: right; }
+    img { max-width: 100%; border-radius: 8px; margin-top: 12px; }
+    #imagePreview { max-width: 520px; width: auto; height: auto; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .muted { color: #64748b; font-size: 14px; }
+    .video-panel {
+      position: relative; margin-top: 16px;
+      display: inline-block; max-width: 480px;
+    }
+    .video-panel img, #videoFrame {
+      display: block; width: auto; max-width: 480px; max-height: 270px;
+      height: auto; object-fit: contain;
+      border: 2px solid #e2e8f0; border-radius: 8px; margin-top: 0;
+    }
+    .repeat-badge {
+      position: absolute; top: 10px; left: 10px;
+      background: #dc2626; color: #fff; font-size: 15px; font-weight: bold;
+      padding: 6px 12px; border-radius: 999px; box-shadow: 0 4px 12px rgba(0,0,0,.2);
+    }
+    .plate-meta {
+      margin-top: 12px; padding: 12px 16px; background: #f8fafc;
+      border-radius: 8px; border: 1px solid #e2e8f0; max-width: 480px;
+    }
+    .plate-meta strong { font-size: 18px; display: block; margin-bottom: 6px; }
+    .frame-info { font-size: 13px; color: #64748b; margin-top: 8px; }
+    .video-summary { margin-top: 12px; padding: 10px; background: #ecfdf5; border-radius: 8px; color: #065f46; }
+    .frame-progress {
+      margin-top: 8px; padding: 8px 12px; background: #eff6ff;
+      border-radius: 8px; color: #1d4ed8; font-size: 14px;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>PLPR Lite</h1>
+  <p class="muted">نسخه سبک — همان مدل و pipeline کامل، بدون GUI سنگین</p>
+
+  <div class="card">
+    <h2>تصویر</h2>
+    <div class="row">
+      <input type="file" id="imageFile" accept="image/*" />
+      <button onclick="uploadImage()">تشخیص پلاک</button>
+    </div>
+    <img id="imagePreview" alt="" />
+    <div id="imageResults"></div>
+  </div>
+
+  <div class="card">
+    <h2>ویدیو / فایل</h2>
+    <div class="row">
+      <input type="file" id="videoFile" accept="video/*" />
+      <input type="number" id="frameSkip" value="5" min="1" max="30" style="width:80px" title="هر چند فریم یک‌بار OCR" />
+      <button id="videoBtn" onclick="uploadVideo()">پردازش ویدیو</button>
+    </div>
+    <p id="videoStatus" class="muted">پلاک جدید → اسکرین‌شات | تکرار → فقط شمارنده</p>
+    <div id="frameProgress" class="frame-progress hidden">آماده پردازش</div>
+    <div id="videoPanel" class="hidden">
+      <div class="video-panel">
+        <img id="videoFrame" alt="فریم تشخیص پلاک" />
+        <div id="repeatBadge" class="repeat-badge">×1</div>
+      </div>
+      <div class="plate-meta">
+        <strong id="videoPersian"></strong>
+        <div id="videoRaw"></div>
+        <div id="videoType"></div>
+        <div id="videoConf"></div>
+        <div id="frameInfo" class="frame-info"></div>
+      </div>
+    </div>
+    <div id="videoSummary" class="video-summary hidden"></div>
+  </div>
+
+  <div class="card">
+    <h2>دوربین / RTSP</h2>
+    <div class="row">
+      <input type="text" id="cameraSource" value="0" placeholder="0 یا rtsp://..." style="min-width:280px" />
+      <button onclick="startCamera()">شروع</button>
+      <button class="secondary" onclick="stopCamera()">توقف</button>
+    </div>
+    <img id="cameraStream" src="/api/stream.mjpg" alt="camera stream" />
+    <div id="cameraResults"></div>
+  </div>
+
+  <script>
+    function renderTable(plates, targetId) {
+      const el = document.getElementById(targetId);
+      if (!plates || !plates.length) {
+        el.innerHTML = '<p class="muted">پلاکی یافت نشد.</p>';
+        return;
+      }
+      let html = '<table><tr><th>فارسی</th><th>خام</th><th>نوع</th><th>اطمینان</th></tr>';
+      for (const p of plates) {
+        html += `<tr><td>${p.persian_text}</td><td>${p.raw_text}</td><td>${p.plate_type_label}</td><td>${(p.char_conf_avg*100).toFixed(1)}%</td></tr>`;
+      }
+      html += '</table>';
+      el.innerHTML = html;
+    }
+
+    async function uploadImage() {
+      const file = document.getElementById('imageFile').files[0];
+      if (!file) return alert('یک تصویر انتخاب کنید');
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/recognize', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.annotated_image_base64) {
+        document.getElementById('imagePreview').src = 'data:image/jpeg;base64,' + data.annotated_image_base64;
+      }
+      renderTable(data.plates, 'imageResults');
+    }
+
+    function showVideoProgress(event) {
+      const el = document.getElementById('frameProgress');
+      el.classList.remove('hidden');
+      if (event.status === 'scanning') {
+        el.textContent = 'در حال بررسی فریم ' + event.frame + '...';
+      } else {
+        el.textContent = 'فریم ' + event.frame + ' — پلاکی یافت نشد';
+      }
+    }
+
+    function handleVideoEvent(event) {
+      if (event.type === 'started') {
+        document.getElementById('frameProgress').classList.remove('hidden');
+        document.getElementById('frameProgress').textContent = 'آپلود انجام شد — شروع اسکن فریم‌ها...';
+        document.getElementById('videoStatus').textContent = 'در حال پردازش زنده...';
+        return;
+      }
+      if (event.type === 'progress') {
+        showVideoProgress(event);
+        return;
+      }
+      if (event.type === 'new_plate') {
+        showNewPlate(event);
+        document.getElementById('videoStatus').textContent =
+          'پلاک جدید: ' + event.plate.persian_text + ' (فریم ' + event.frame + ')';
+        return;
+      }
+      if (event.type === 'repeat') {
+        updateRepeat(event);
+        document.getElementById('videoStatus').textContent =
+          'تکرار پلاک — فریم ' + event.frame;
+        return;
+      }
+      if (event.type === 'done') {
+        showVideoDone(event);
+        document.getElementById('videoStatus').textContent = 'پردازش تمام شد.';
+        document.getElementById('frameProgress').classList.add('hidden');
+        return;
+      }
+      if (event.type === 'error') {
+        document.getElementById('videoStatus').textContent = 'خطا: ' + event.message;
+      }
+    }
+
+    function showNewPlate(event) {
+      const plate = event.plate;
+      document.getElementById('videoPanel').classList.remove('hidden');
+      document.getElementById('videoSummary').classList.add('hidden');
+      if (event.image_base64) {
+        document.getElementById('videoFrame').src = 'data:image/jpeg;base64,' + event.image_base64;
+      }
+      document.getElementById('repeatBadge').textContent = '×' + event.count;
+      document.getElementById('videoPersian').textContent = plate.persian_text;
+      document.getElementById('videoRaw').textContent = 'خام: ' + plate.raw_text;
+      document.getElementById('videoType').textContent = 'نوع: ' + plate.plate_type_label;
+      document.getElementById('videoConf').textContent =
+        'اطمینان پلاک: ' + (plate.plate_conf * 100).toFixed(1) + '% | حروف: ' + (plate.char_conf_avg * 100).toFixed(1) + '%';
+      document.getElementById('frameInfo').textContent = 'فریم ' + event.frame + ' — اولین تشخیص این پلاک';
+    }
+
+    function updateRepeat(event) {
+      document.getElementById('repeatBadge').textContent = '×' + event.count;
+      document.getElementById('frameInfo').textContent =
+        'فریم ' + event.frame + ' — تکرار همان پلاک (' + event.count + ' بار دیده شد)';
+    }
+
+    function showVideoDone(event) {
+      const el = document.getElementById('videoSummary');
+      el.classList.remove('hidden');
+      el.textContent =
+        'پایان پردازش — ' + event.unique_plates + ' پلاک یکتا، ' + event.total_hits + ' فریم با تشخیص';
+    }
+
+    async function uploadVideo() {
+      const file = document.getElementById('videoFile').files[0];
+      if (!file) return alert('یک ویدیو انتخاب کنید');
+
+      const btn = document.getElementById('videoBtn');
+      btn.disabled = true;
+      document.getElementById('videoStatus').textContent = 'در حال آپلود ویدیو...';
+      document.getElementById('frameProgress').classList.remove('hidden');
+      document.getElementById('frameProgress').textContent = 'در حال آپلود...';
+      document.getElementById('videoPanel').classList.add('hidden');
+      document.getElementById('videoSummary').classList.add('hidden');
+
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('frame_skip', document.getElementById('frameSkip').value);
+
+      try {
+        const res = await fetch('/api/recognize/video', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error('خطا در پردازش ویدیو');
+        if (!res.body) throw new Error('مرورگر از استریم پشتیبانی نمی‌کند');
+
+        const streamReader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await streamReader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            handleVideoEvent(JSON.parse(line));
+          }
+        }
+
+        if (buffer.trim()) {
+          handleVideoEvent(JSON.parse(buffer));
+        }
+      } catch (err) {
+        document.getElementById('videoStatus').textContent = 'خطا: ' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function startCamera() {
+      const source = document.getElementById('cameraSource').value;
+      const fd = new FormData();
+      fd.append('source', source);
+      await fetch('/api/camera/start', { method: 'POST', body: fd });
+      document.getElementById('cameraStream').src = '/api/stream.mjpg?t=' + Date.now();
+      pollCamera();
+    }
+
+    async function stopCamera() {
+      await fetch('/api/camera/stop', { method: 'POST' });
+    }
+
+    async function pollCamera() {
+      const res = await fetch('/api/camera/latest');
+      const data = await res.json();
+      renderTable(data.plates, 'cameraResults');
+      setTimeout(pollCamera, 1500);
+    }
+  </script>
+</body>
+</html>

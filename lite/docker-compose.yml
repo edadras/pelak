@@ -1,0 +1,84 @@
+services:
+  plpr-lite:
+    build:
+      context: ..
+      dockerfile: lite/Dockerfile
+    container_name: plpr-lite
+    ports:
+      - "8502:8502"
+    environment:
+      LITE_MODE: server
+      LITE_PORT: "8502"
+      LITE_FRAME_SKIP: "5"
+      LITE_VOTE_WINDOW: "5"
+      PLATE_CONF: "0.25"
+      CHAR_CONF: "0.25"
+    volumes:
+      - ../model:/app/model:ro
+      - ../helper:/app/helper:ro
+      - ./main.py:/app/lite/main.py:ro
+      - ./reader.py:/app/lite/reader.py:ro
+      - ./plate_validation.py:/app/lite/plate_validation.py:ro
+      - ./image_utils.py:/app/lite/image_utils.py:ro
+      - ./static:/app/lite/static:ro
+      - ./data:/data
+      - ./output:/output
+    restart: unless-stopped
+
+  plpr-lite-file:
+    profiles:
+      - file
+    build:
+      context: ..
+      dockerfile: lite/Dockerfile
+    container_name: plpr-lite-file
+    environment:
+      LITE_MODE: file
+      LITE_SOURCE: /data/sample.jpg
+      PLATE_CONF: "0.25"
+      CHAR_CONF: "0.25"
+    volumes:
+      - ../model:/app/model:ro
+      - ../helper:/app/helper:ro
+      - ./data:/data
+      - ./output:/output
+
+  plpr-lite-video:
+    profiles:
+      - video
+    build:
+      context: ..
+      dockerfile: lite/Dockerfile
+    container_name: plpr-lite-video
+    environment:
+      LITE_MODE: video
+      LITE_SOURCE: /data/sample.mp4
+      LITE_FRAME_SKIP: "5"
+      PLATE_CONF: "0.25"
+      CHAR_CONF: "0.25"
+    volumes:
+      - ../model:/app/model:ro
+      - ../helper:/app/helper:ro
+      - ./data:/data
+      - ./output:/output
+
+  plpr-lite-rtsp:
+    profiles:
+      - rtsp
+    build:
+      context: ..
+      dockerfile: lite/Dockerfile
+    container_name: plpr-lite-rtsp
+    ports:
+      - "8502:8502"
+    environment:
+      LITE_MODE: rtsp
+      LITE_SOURCE: rtsp://admin:123456@192.168.1.40:554/stream1
+      LITE_FRAME_SKIP: "5"
+      PLATE_CONF: "0.25"
+      CHAR_CONF: "0.25"
+    volumes:
+      - ../model:/app/model:ro
+      - ../helper:/app/helper:ro
+      - ./output:/output
+    restart: unless-stopped
