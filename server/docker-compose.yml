@@ -1,0 +1,65 @@
+# Production stack: PostgreSQL + Redis + API/UI + scalable vision workers.
+#   cp .env.example .env && docker compose up -d --build
+#   more cameras:   docker compose up -d --scale worker=4
+name: pelak
+
+x-app: &app
+  build:
+    context: ..
+    dockerfile: server/Dockerfile
+    args:
+      TORCH_INDEX: ${TORCH_INDEX:-https://download.pytorch.org/whl/cpu}
+      BASE_IMAGE: ${BASE_IMAGE:-python:3.11-slim-bookworm}
+  image: pelak-server:latest
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg2://pelak:${POSTGRES_PASSWORD}@db:5432/pelak
+    REDIS_URL: redis://redis:6379/0
+    MEDIA_DIR: /data/media
+  volumes:
+    - media:/data/media
+    - videos:/app/server/data/videos
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_started
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pelak
+      POSTGRES_USER: pelak
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pelak"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "app.worker.main"]
+    healthcheck:
+      disable: true
+    deploy:
+      replicas: ${WORKERS:-1}
+
+volumes:
+  pgdata:
+  media:
+  videos:

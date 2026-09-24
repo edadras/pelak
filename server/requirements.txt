@@ -1,0 +1,28 @@
+# Web / API
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+sqlalchemy==2.0.35
+psycopg2-binary==2.9.9
+redis==5.0.8
+pyjwt==2.9.0
+tzdata
+psutil
+requests
+
+# Vision (torch/torchvision are installed separately in the Dockerfile: CPU or CUDA build)
+numpy<2
+opencv-python-headless==4.10.0.84
+ultralytics==8.2.103
+pillow
+pandas
+pyyaml
+tqdm
+matplotlib
+scipy
+seaborn
+
+# Plate text helpers (existing recognizer in ../helper)
+arabic-reshaper
+python-bidi==0.4.2
+jellyfish
